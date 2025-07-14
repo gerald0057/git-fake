@@ -1,5 +1,6 @@
 import os
 import random
+import argparse
 from datetime import datetime, timedelta
 from faker import Faker
 from git import Repo, Actor
@@ -16,14 +17,28 @@ class GitCommitGenerator:
             Actor("Charlie Maintainer", "charlie@example.com")
         ]
         self.existing_files = set()
-        
+
     def initialize_repo(self):
-        """初始化或清空Git仓库"""
-        if os.path.exists(self.repo_path):
-            shutil.rmtree(self.repo_path)
-        os.makedirs(self.repo_path)
-        self.repo = Repo.init(self.repo_path)
+        """初始化或加载Git仓库"""
+        if not os.path.exists(self.repo_path):
+            os.makedirs(self.repo_path)
+            self.repo = Repo.init(self.repo_path)
+            self.existing_files = set()
+        else:
+            if not os.path.exists(os.path.join(self.repo_path, '.git')):
+                raise ValueError(f"路径 {self.repo_path} 不是一个Git仓库")
+            self.repo = Repo(self.repo_path)
+            self.scan_existing_files()
+    
+    def scan_existing_files(self):
+        """扫描仓库中现有的文件"""
         self.existing_files = set()
+        for root, _, files in os.walk(self.repo_path):
+            if '.git' in root:
+                continue
+            for file in files:
+                rel_path = os.path.relpath(os.path.join(root, file), self.repo_path)
+                self.existing_files.add(rel_path)
         
     def _create_file(self, file_name):
         """创建新文件并返回完整路径"""
@@ -121,6 +136,13 @@ class GitCommitGenerator:
         print(f"Generated {num_commits} commits in {self.repo_path}")
 
 if __name__ == "__main__":
-    generator = GitCommitGenerator()
-    generator.generate_history(num_commits=50, days_back=180)
-
+    parser = argparse.ArgumentParser(description='生成虚假的Git提交历史')
+    parser.add_argument('--repo', type=str, default='fake_repo',
+                       help='仓库路径 (默认: fake_repo)')
+    parser.add_argument('--num-commits', type=int, default=5,
+                       help='要生成的提交数量 (默认: 50)')
+    parser.add_argument('--days-back', type=int, default=10,
+                       help='时间跨度(天) (默认: 180)')
+    args = parser.parse_args()
+    generator = GitCommitGenerator(repo_path=args.repo)
+    generator.generate_history(num_commits=args.num_commits, days_back=args.days_back)
